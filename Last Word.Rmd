@@ -1,0 +1,132 @@
+---
+title: "Последнее слово"
+author: "Julia Kim"
+date: "19 12 2019"
+output: html_document
+---
+### Скрипт на Python: web-scrapping, извлечение чистого текста, токенизация, лемматизация, фильтрация по стоп-словам
+```
+import requests
+import re
+from bs4 import BeautifulSoup
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+import pymorphy2
+morph = pymorphy2.MorphAnalyzer()
+import collections
+from collections import Counter
+import math
+
+def download():
+    page = requests.get('http://lastword.pythonanywhere.com/')
+    page.encoding = 'utf-8' 
+    html = page.text
+    regexp = "a href='./(.+?)'"
+    name = re.findall(regexp, html)
+    i = 0
+    for link in name:
+        result = requests.get('http://lastword.pythonanywhere.com/' + link)
+        i += 1
+        result.encoding = 'utf-8' 
+        page = result.text
+        with open('page' + str(i) + '.html', 'w', encoding = 'utf-8') as fw:
+            fw.write(page)
+
+def get_texts(file):
+    with open(file, 'r', encoding = 'utf-8') as f:
+        html = f.read()
+    newfilename = re.sub ('html','txt', file)
+    regexp = '<div class="text"><p>(.+?)</div>'
+    text = re.search(regexp, html, flags = re.DOTALL).group(0)
+    text = re.sub('<.+?>', '', text)
+    with open('txt\\' + newfilename, 'w', encoding = 'utf-8') as fw:
+        fw.write(text)
+        
+def get_texts_bs(file):
+    newfilename = re.sub('html','txt', file)
+    with open(file, 'r', encoding = 'utf-8') as f:
+        soup = BeautifulSoup(f, 'html.parser')
+    div_with_text = soup.find('div', {'class':'text'})
+    speech_text = div_with_text.text
+    texts = []
+    texts.append(speech_text)
+    return(texts)
+
+def pm_lemmatize(token):
+    result = morph.parse(token)
+    normal_form = result[0].normal_form
+    return (normal_form)
+    
+def save_texts():
+    all_texts = ''
+    for i in range(1, 61):
+        all_texts += '\n'.join(get_texts_bs('page' + str(i) + '.html'))
+    all_texts = re.sub('[-—–.,:()""„”«»?!]', '', all_texts)
+    nltk.download('stopwords')
+    stop = set(stopwords.words('russian'))
+    add_stop = {'это', 'весь', 'такой', 'который', 'наш', 'ваш', 'некоторый', 'еще', 'ещё', 'ничто', 'просто',
+                'свой', 'очень', 'именно', 'самый', 'никакой'}
+    stop = add_stop.union(stop)
+    tokens = nltk.word_tokenize(all_texts)
+    lemmas = []
+    for token in tokens:
+        lemma = pm_lemmatize(token)
+        lemmas.append(lemma)
+    filtered_texts = [w for w in lemmas if not w in stop]
+    filtered_texts = '\n'.join(filtered_texts).lower()
+    with open('filtered_texts.txt', 'w', encoding = 'utf-8') as fw:
+        fw.write(filtered_texts)
+    return filtered_texts
+
+def words_in_text(file):
+    with open(file, 'r', encoding = 'utf-8') as f:
+        text = f.read()
+    with open('freq_words.txt', 'r', encoding = 'utf-8') as f:
+        freq_words = f.read()
+    freq_words = freq_words.split()
+    text = re.sub('[-—–.,:()""„”«»?!]', '', text)
+    tokens = nltk.word_tokenize(text)
+    lemmas = []
+    for token in tokens:
+        lemma = pm_lemmatize(token)
+        lemmas.append(lemma.lower())
+    d = {}
+    for word in lemmas:
+        if word in freq_words:
+            if word in d:
+                d[word] += 1
+            else:
+                d[word] = 1
+    with open(file + 'freq' + '.txt', 'w', encoding = 'utf-8') as fw:
+        for word in sorted(d):
+            fw.write('{}\t{}\n'.format(word, d[word]))
+    
+    
+def main():
+    save_texts()
+    for i in range(1, 61):
+        words_in_text('txt\\' + 'page' + str(i) + '.txt')
+    
+if __name__ == '__main__':
+    main()
+```
+
+### График самых частотных слов: проект "Последнее слово"
+```{r}
+library("tidyverse")
+library("xml2")
+data <- read_csv("word_t.csv")
+library(tidytext)
+data %>%
+  count(word, sort = TRUE) %>%
+  slice(1:30) %>%
+  mutate(frequency = n) %>%
+  ggplot(aes(fct_reorder(word, frequency), frequency, fill = frequency)) +
+  geom_col() +
+  coord_flip()+
+  labs(x = "",
+       y = "",
+       title = 'Самые частотные слова: проект "Последнее слово"',
+       caption = "Источник: http://lastword.pythonanywhere.com/")
+```
